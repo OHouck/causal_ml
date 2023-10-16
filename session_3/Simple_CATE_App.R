@@ -32,6 +32,7 @@ mean(btru)
 # Regression
 dat = data.frame(xtru,trt,ytru)
 stor = NULL
+# boostrap
 for(b in 1:100){
 smp = sample(1:n,n,replace = TRUE)  
 res = lm(ytru~trt,data=dat[smp,])
@@ -44,6 +45,9 @@ sqrt(var(stor[,2]))
 
 # Adding covariates
 # What does this do?
+
+# standard errors go down slightly when adding covariates
+# coefficeint changed because probabilty of treatment depends on covariates
 summary(lm(ytru~trt+xtru))
 
 # Regression with interactions 
@@ -57,11 +61,14 @@ abline(0,1)
 
 # Predict Y1
 df1 = dat
+
+# make everyone treated
 df1$trt=1
 yhat1 = predict(res,newdata=df1)
 
 # Predict Y0
 df0 = dat
+# make everyone untreated
 df0$trt=0
 yhat0 = predict(res,newdata=df0)
 
