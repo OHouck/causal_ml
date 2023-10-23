@@ -6,6 +6,10 @@ library(torch)
 library(ggplot2)
 library(tidyverse)
 
+# Goal for today is y = f(x) + e 
+
+
+
 # Tensors and AD
 z <- torch_tensor(.5, requires_grad = TRUE)
 y = z^2+z
