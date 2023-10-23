@@ -2,9 +2,13 @@
 # Max Farrell & Sanjog Misra
 # CML 2023
 
+# clear workspace
+rm(list=ls())
 
 ## ----------------------------------------------------------------------------------------------
 library(torch)
+library(httpgd)
+
 
 ### generate training data -----------------------------------------------------
 # y = alpha(x) + beta(x)t + eps
@@ -28,6 +32,8 @@ x = torch_tensor(matrix(rnorm(n*d_in),n,d_in))
 
 #  True CATE
 #  beta(x) = 2 - x_2 + 0.25 * x_1^3
+
+# only x_1 and x_2 matter
 trub = 2-x[, 2, NULL]+.25*(x[, 1, NULL])^3
 plot(as.numeric(trub)~as.numeric((x[, 1])),pch=19,col="#00000030")
 
@@ -45,19 +51,21 @@ y <- trua+ trub*z+ torch_randn(n, 1)
 # The Estimator
 ## ----------------------------------------------------------------------------------------------
 # The architecture (all layers are relu)
+
+# two hidden layers, each layer has 20 nodes
 arch=c(20,20)
 
-# Model constructor
-model <- nn_sequential(nn_linear(d_in, arch[1]),nn_relu())
-j=1 # in case single layer
-# Loop through architecture
-if(length(arch)>1){
+# Model constructor, initialize the model and make all activation functions relu
+model <- nn_sequential(nn_linear(d_in, arch[1]), nn_relu())
+j=1 # in case single layer (j is number of layers)
+# Loop through architecture and add layers
+if(length(arch)>1) {
   for(j in 2:length(arch)){
     model$add_module(name = paste("layer_",j-1),module=nn_linear(arch[j-1],arch[j]))
     model$add_module(name = paste0("relu_",j-1),nn_relu())
   }
 }
-# Output layer
+# Output layer, spits out a and b
 model$add_module("ab",nn_linear(arch[j],d_out))
 
 # see the architecture
@@ -90,8 +98,10 @@ for (t in 1:NEPOCH) {
   ab$retain_grad()
   alpha$retain_grad()
   beta$retain_grad()
+
+  # where the structure we impose on the model comes in
   y_pred <- alpha+beta*z
-  # customize the loss to your model
+  # customize the loss to your modee
   loss <- nnf_mse_loss(y_pred, y, reduction = "mean")
 
   ### -------- Backpropagation --------
@@ -131,12 +141,15 @@ mean(as.numeric(beta))
 # Inference
 # Doubly Robust SE
 ## ----------------------------------------------------------------------------------------------
+
+# make numbers instead of tensors, Z is treatment, Y outcome
 Z = as.numeric(z)
 Y = as.numeric(y)
 
 Yhat = as.numeric(y_pred)
 mu0 = as.numeric(alpha)
 mu1 = mu0+as.numeric(beta)
+# propensity score
 e = mean(Z)
 
 # As Max showed in class
@@ -145,14 +158,11 @@ IF = (mu1 + Z*(Y-mu1)/e) - (mu0+ (1-Z)*(Y-mu0)/(1-e))
 DR.est = mean(IF)
 DR.se = sqrt(var(IF)/n)
 
-
-
 # Stack and check answers from the two approaches
 dr = c(Est=DR.est,se = DR.se,
        CI.L=DR.est-1.96*DR.se,CI.U=DR.est+1.96*DR.se)
 
 print(dr)
-
 
 # Some other approaches for comparison
 # LASSO
@@ -204,7 +214,6 @@ drCF = c(Est=res.cf[1],se = res.cf[2],
          CI.L=res.cf[1]-1.96*res.cf[2],CI.U=res.cf[1]+1.96*res.cf[2])
 
 rbind(dr,drL,drCF)
-
 
 # Add to plot
 points(as.numeric(cf.tau)~as.numeric((x[, 1])),pch=19,col='#ffff0030')

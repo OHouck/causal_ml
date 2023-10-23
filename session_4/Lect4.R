@@ -5,6 +5,7 @@
 library(torch)
 library(ggplot2)
 library(tidyverse)
+library(httpgd)
 
 # Goal for today is y = f(x) + e 
 
@@ -66,6 +67,7 @@ for (i in 1:num_iterations) {
   # manual update
   with_no_grad({
     x_star$sub_(lr * x_star$grad)
+    # set gradient to zero
     x_star$grad$zero_()
   })
   
@@ -90,10 +92,12 @@ for (i in 1:num_iterations) {
   
   if (i %% 10 == 0) cat("Iteration: ", i, "\n")
   
+  # zero out the gradient
   optimizer$zero_grad()
   value <- rosenbrock(x_star)
   if (i %% 10 == 0) cat("Value is: ", as.numeric(value), "\n")
   
+  # computes gradient of value w.r.t. params
   value$backward()
   optimizer$step()
   
