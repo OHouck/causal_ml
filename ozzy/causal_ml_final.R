@@ -18,8 +18,8 @@ library(torch)
 library(MASS)
 
 # Set seed
-set.seed(123123)
-torch_manual_seed(123123)
+set.seed(343532)
+torch_manual_seed(235324)
 
 #==============================================================================
 # 1. Generate data
@@ -35,7 +35,7 @@ d_z <- 1L
 d_out  <- 2 
 
 # number of observations in training set
-N <- 1500
+N <- 15000
 
 # create random data
 x  <- torch_tensor(matrix(rnorm(N*d_in), N, d_in))
@@ -56,67 +56,65 @@ z <- torch_rand(N, 1L) * .6 + 0.2
 
 #---------------------------------------------
 # linear model for testing
-y_prob <- function(alpha, beta, z) {
-  alpha + torch_mul(beta, z) %>% return()
-}
-true_prob <- y_prob(true_a, true_b, z) + torch_randn(N, 1)
+# y_prob <- function(alpha, beta, z) {
+#   alpha + torch_mul(beta, z) %>% return()
+# }
+# true_prob <- y_prob(true_a, true_b, z) + torch_randn(N, 1)
 
-y <- torch_tensor( # recast as torch tensor
-  as.matrix(true_prob),
-  dtype = torch_float()
-)
+# y <- torch_tensor( # recast as torch tensor
+#   as.matrix(true_prob),
+#   dtype = torch_float()
+# )
 
-loss_fn <- function(y_pred, y, reduction = "mean") {
-  nnf_mse_loss(y_pred, y, reduction = reduction) %>% return()
-}
+# loss_fn <- function(y_pred, y, reduction = "mean") {
+#   nnf_mse_loss(y_pred, y, reduction = reduction) %>% return()
+# }
 #---------------------------------------------
 
 
-# # function to evaltuate probability of y
-# y_prob <- function(alpha, beta, z) {
-#     # y_prob = 1/(1+exp(-alpha-beta*ln(z)))
-#     y_prob  <-  torch_reciprocal(
-#         torch_add(1, torch_exp(
-#                             torch_subtract(torch_mul(-1, alpha), 
-#                             torch_mul(beta, torch_log(z)))
-#                             )
-#                     )
-#     )  %>% return()
-# }
-# # calculate the true probability of y
-# true_prob <- y_prob(true_a, true_b, z)
+# function to evaltuate probability of y
+y_prob <- function(alpha, beta, z) {
+    # y_prob = 1/(1+exp(-alpha-beta*ln(z)))
+    y_prob  <-  torch_reciprocal(
+        torch_add(1, torch_exp(
+                            torch_subtract(torch_mul(-1, alpha), 
+                            torch_mul(beta, torch_log(z)))
+                            )
+                    )
+    )  %>% return()
+}
+# calculate the true probability of y
+true_prob <- y_prob(true_a, true_b, z)
 
-# y  <- rbinom(N, 1, prob = as.numeric(true_prob))
-# y  <- torch_tensor(as.matrix(y)) 
+y  <- rbinom(N, 1, prob = as.numeric(true_prob))
+y  <- torch_tensor(as.matrix(y)) 
 
-# # loss function is negative log likelihood
-# loss_fn_mean <- function(y_pred, y) {
-#     # loss = -y * log(y_pred) - (1 - y) * log(1 - y_pred)
+# loss function is negative log likelihood
+loss_func <- function(y_pred, y, reduction) {
+    # loss = -y * log(y_pred) - (1 - y) * log(1 - y_pred)
 
-#     # check if y_pred is 0 or 1
-#     # if so, add a small number to avoid log(0)
-#     y_pred <- torch_where(y_pred == 0, torch_tensor(0.01), y_pred)
-#     y_pred <- torch_where(y_pred == 1, torch_tensor(0.99), y_pred)
+    # check if y_pred is 0 or 1
+    # if so, add a small number to avoid log(0)
+    y_pred <- torch_where(y_pred == 0, torch_tensor(0.01), y_pred)
+    y_pred <- torch_where(y_pred == 1, torch_tensor(0.99), y_pred)
 
-#     # loss  <- -y * torch_log(y_pred) - (1 - y) * torch_log(1 - (y_pred))
-#     loss <- torch_sub(torch_mul(torch_neg(y), torch_log(y_pred)), torch_mul(torch_sub(1, y), torch_log(torch_sub(1, y_pred))))
-    
-#     loss  <- torch_mean(loss, dim = 1L) %>% return()
-# }
+    # loss  <- -y * torch_log(y_pred) - (1 - y) * torch_log(1 - (y_pred))
+#   loss <- -y * torch_log(y_pred + 0.0001) - (1 - y) *
+#     torch_log(1 + 0.0001 - y_pred)
 
-# loss_fn_sum <- function(y_pred, y) {
-#     # loss = -y * log(y_pred) - (1 - y) * log(1 - y_pred)
+    loss <- torch_sub(torch_mul(torch_neg(y), torch_log(y_pred)), torch_mul(torch_sub(1, y), torch_log(torch_sub(1, y_pred))))
 
-#     # check if y_pred is 0 or 1
-#     # if so, add a small number to avoid log(0)
-#     y_pred <- torch_where(y_pred == 0, torch_tensor(0.01), y_pred)
-#     y_pred <- torch_where(y_pred == 1, torch_tensor(0.99), y_pred)
 
-#     # loss  <- -y * torch_log(y_pred) - (1 - y) * torch_log(1 - (y_pred))
-#     loss <- torch_sub(torch_mul(torch_neg(y), torch_log(y_pred)), torch_mul(torch_sub(1, y), torch_log(torch_sub(1, y_pred))))
-    
-#     loss  <- torch_sum(loss, dim = 1L) %>% return()
-# }
+  if (reduction == "mean") {
+    # loss <- loss * (1 / (y %>% length()))
+    loss  <- torch_mean(loss) %>% return()
+  }
+
+  # other option is sum
+  else {
+    torch_sum(loss) %>% return()
+  }
+}
 
 #==============================================================================
 # 2. Create sample splits
@@ -156,11 +154,12 @@ split_3$z <- z[idx[[3]], ]
 
 #==============================================================================
 # 3. Load functions to implement causalDNN
+#==============================================================================
 
-source(paste0(code, "cdnn_houck.R")) # Step 1
+source(paste0(code, "ozzy/cdnn_houck.R")) # Step 1
 source(paste0(code, "session_8/linDNN.R")) # Step 2
-source(paste0(code, "session_8/projLam.R")) 
-source(paste0(code, "session_8/procRes.R")) # Step 3
+source(paste0(code, "ozzy/projLam_houck.R")) 
+source(paste0(code, "ozzy/procRes_houck.R")) # Step 3
 
 # Crossfits
 # 1, 2, 3
@@ -168,40 +167,72 @@ source(paste0(code, "session_8/procRes.R")) # Step 3
 # 2, 3, 1
 
 # Run DeepNets
-dnn1  <- cdnn(split_1, y_pred_func = y_prob, loss_func = loss_fn,
+dnn1  <- cdnn(split_1, y_pred_func = y_prob, loss_func = loss_func,
               learn_rate = 0.01, weight_decay = 1e-3, arch = c(20, 20))
 
-dnn2  <- cdnn(split_2, y_pred_func = y_prob, loss_func = loss_fn,
-              learn_rate = 0.01,  weight_decay = 1e-3, arch = c(20, 20))
-
-dnn3  <- cdnn(split_3, y_pred_func = y_prob, loss_func = loss_fn,
+dnn2  <- cdnn(split_2, y_pred_func = y_prob, loss_func = loss_func,
               learn_rate = 0.01, weight_decay = 1e-3, arch = c(20, 20))
 
-xx
+dnn3  <- cdnn(split_3, y_pred_func = y_prob, loss_func = loss_func,
+              learn_rate = 0.01, weight_decay = 1e-3, arch = c(20, 20))
 
 # Get parameters on full data
 aba  <- dnn1$model(x)
 abb  <- dnn2$model(x)
 abc  <- dnn3$model(x)
 
-xx
+#==============================================================================
+# 4. Compute influence functions and do inference
+#==============================================================================
+
 # Projections
 # Projects the Hessian onto X
 # To form conditional expectation functions
-lProj2 = makeLam(dat = split_2,dnn=dnn1)
-lProj1 = makeLam(dat = split_1,dnn=dnn3) 
-lProj3 = makeLam(dat = split_3,dnn=dnn2) 
+# make minor changes to projLam.R to take in differnet 
+# loss functions and prediction functions
+lProj1 = makeLam(dat = split_2,dnn=dnn3, 
+    loss_func = loss_func, y_pred_func = y_prob)
+lProj2 = makeLam(dat = split_2,dnn=dnn1, 
+    loss_func = loss_func, y_pred_func = y_prob)
+lProj3 = makeLam(dat = split_2,dnn=dnn2, 
+    loss_func = loss_func, y_pred_func = y_prob)
 
 # Compute IF for each split and stack
 # What statistic are we interested in
 # Let's say ATE = (E[H]=E(CATE)=E(ab[,2]))
-# XX need to change that 
-H=function(ab, full_dat) ab[,2]
+# H=function(ab, full_dat) ab[,2]
+
+# H for marginal effect
+H  <-  function(theta, data) {
+    # H = (e^a * b * t^(b-a)) / (e^a * t^b + 1)^2
+    n = nrow(data$x)
+    alpha <- theta[,1]$reshape(c(n,1L))
+    beta <- theta[,2]$reshape(c(n,1L))
+
+    H  <- torch_div(
+        torch_mul(
+            torch_mul(
+                torch_exp(alpha), beta
+            ), 
+            torch_pow(data$z, torch_subtract(beta, alpha))
+        ), 
+        torch_pow(
+            torch_add(
+                torch_mul(
+                    torch_exp(alpha), 
+                    torch_pow(data$z, beta)
+                ), 
+                1
+            ), 
+            2
+        )
+    ) %>% return()
+}
 
 # Use split 3s for 
-fin3 = proc_res(split_3 ,dnn1,lProj2,H)
-fin2 = proc_res(split_2,dnn3,lProj1,H)
-fin1 = proc_res(split_1,dnn2,lProj3,H)
+fin3 = proc_res(split_3 ,dnn1,lProj2,H, loss_func = loss_func, y_pred_func = y_prob)
+fin2 = proc_res(split_2,dnn3,lProj1,H, loss_func = loss_func, y_pred_func = y_prob)
+fin1 = proc_res(split_1,dnn2,lProj3,H, loss_func = loss_func, y_pred_func = y_prob)
 
 # Stack 
 af1 = fin1$auto.if
@@ -216,4 +247,4 @@ cf = c(Est=cf.est,se = cf.se,
 cf
 
 #Truth
-mean(trub)
+mean(true_b)

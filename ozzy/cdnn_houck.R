@@ -89,7 +89,7 @@ cdnn<-function(split, y_pred_func, loss_func, learn_rate, weight_decay,
     y_pred <- y_pred_func(alpha, beta, z)
 
     # loss <- nnf_mse_loss(y_pred, y, reduction = "mean")
-    loss <- loss_func(y_pred, y)
+    loss <- loss_func(y_pred, y, reduction = "mean")
 
     # check for NAs
     if (is.nan(loss %>% as.array())) {
