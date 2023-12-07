@@ -2,6 +2,9 @@
 # Max Farrell & Sanjog Misra
 # CML 2023
 
+# clear workspace
+rm(list=ls())
+
 
 ## ----------------------------------------------------------------------------------------------
 library(torch)

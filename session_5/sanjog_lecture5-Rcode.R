@@ -148,7 +148,7 @@ lines(sort(x.R),predict(forest)[order(x.R)], col="red", lwd=2)
 ### define the network ---------------------------------------------------------
 
 # dimensionality of hidden layer
- d_hidden <- 10
+ d_hidden <- 20
 
 model <- nn_sequential(
   nn_linear(1, d_hidden),
