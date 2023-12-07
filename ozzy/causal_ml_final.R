@@ -35,16 +35,16 @@ d_z <- 1L
 d_out  <- 2 
 
 # number of observations in training set
-N <- 15000
+N <- 50000 
 
 # create random data
 x  <- torch_tensor(matrix(rnorm(N*d_in), N, d_in))
 
-# Generate alpha(x) = <placeholder>
-true_a <- -1 + x[, 1, NULL] - torch_pow(x[, 2, NULL], 2)
+# Generate alpha(x) using some arbitrary function
+true_a <- -1 + x[, 1, NULL] - 4 * torch_pow(x[, 2, NULL], 2)
 
-# Generate beta(x) = <placeholder>
-true_b<- 2 + x[, 3, NULL] + 3 * x[, 4, NULL]
+# Generate beta(x) also arbitrarily
+true_b<- 2 + x[, 3, NULL] + 2 * x[, 4, NULL]
 
 # Assign treatment t(X) = <placeholder>
 # t needs to be strictly positive and continuous
@@ -244,7 +244,15 @@ cf.se = sqrt((1/3)*(var(af1)+var(af2)+var(af3))/N)
 cf = c(Est=cf.est,se = cf.se,
        CI.L=cf.est-1.96*cf.se,CI.U=cf.est+1.96*cf.se)
 
-cf
+print("CF")
+print(cf)
 
 #Truth
-mean(true_b)
+    # H = (e^a * b * t^(b-a)) / (e^a * t^b + 1)^2
+
+b  <- as.numeric(true_b)
+a  <- as.numeric(true_a)
+z  <- as.numeric(z)
+H = (exp(a) * b * z^(b-a)) / (exp(a) * z^b + 1)^2
+
+print(paste0("Truth: ", mean(H)))
