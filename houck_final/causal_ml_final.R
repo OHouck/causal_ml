@@ -156,10 +156,10 @@ split_3$z <- z[idx[[3]], ]
 # 3. Load functions to implement causalDNN
 #==============================================================================
 
-source(paste0(code, "houck_final/cdnn_houck.R")) # Step 1
+source(paste0(code, "ozzy/cdnn_houck.R")) # Step 1
 source(paste0(code, "session_8/linDNN.R")) # Step 2
-source(paste0(code, "houck_final/projLam_houck.R")) 
-source(paste0(code, "houck_final/procRes_houck.R")) # Step 3
+source(paste0(code, "ozzy/projLam_houck.R")) 
+source(paste0(code, "ozzy/procRes_houck.R")) # Step 3
 
 # Crossfits
 # 1, 2, 3
@@ -258,8 +258,4 @@ H = (exp(a) * b * z^(b-a)) / (exp(a) * z^b + 1)^2
 print(paste0("Truth: ", mean(H)))
 
 # save truth and estimate in a text file
-write.table(c(paste0("estimate: ",cf.est), 
-              paste0("se: ", cf.se),
-              paste0("truth: ", mean(H))
-              ), file = paste0(code, "houck_final/cf.txt"), 
-              row.names = FALSE, col.names = FALSE)
+write.table(c(cf.est, cf.se, mean(H)), file = paste0(code, "houck_final/cf.txt"), row.names = FALSE, col.names = FALSE)
