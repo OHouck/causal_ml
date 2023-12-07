@@ -31,17 +31,19 @@ N <- 30000  # number of observations in training set
 x <- torch_tensor(matrix(rnorm(N * d_in), N, d_in)) # create random data
 
 # Generate alpha(x) = <placeholder>
-true_alpha <- -1 + x[, 1, NULL] - torch_pow(x[, 2, NULL], 2)
+true_alpha <- x[, 1, NULL] + x[, 2, NULL]
 
 # Generate beta(x) = <placeholder>
-true_beta <- 2 + x[, 3, NULL] + 3 * x[, 4, NULL]
+true_beta <- x[, 3, NULL] + x[, 4, NULL]
 
 # Assign treatment t(X) = <placeholder>
 # t needs to be strictly positive and continuous
 # z <- 1 + 0.6 * torch_rand(N, 1L)
 # z <- 0.2 + 0.6 * torch_rand(N, 1L)
 # z <- torch_pow(torch_randn(N, 1L) + x[, 5, NULL], 2) + 0.5
-z <- torch_pow(torch_randn(N, 1L), 2) + 0.5
+z <- torch_exp(torch_randn(N, 1L))
+
+# z <- torch_pow(torch_randn(N, 1L), 2) + 1
 
 # z <- x[, 3, NULL] # t in the code is already transformed into log(t)
 
@@ -52,6 +54,13 @@ calc_prob <- function(alpha, beta, z) {
 }
 
 true_prob <- calc_prob(true_alpha, true_beta, z)
+
+plt <- ggplot() +
+  geom_histogram(aes(x = true_prob %>% as.numeric()),
+                 color = "deepskyblue3", fill = "deepskyblue") +
+  labs(x = "true_prob", y = "Density", title = "Density of true_prob") +
+  theme_bw()
+ggsave(file.path(path, "out", "density_true_prob.png"), plt)
 
 y <- rbinom(N, 1, prob = as.numeric(true_prob))
 y <- torch_tensor( # recast as torch tensor
@@ -158,8 +167,7 @@ dnn_3 <- theta_DNN(
   N_epoch = 2000, arch = c(20, 20, 20, 20)
 )
 
-# Calculate parameters for full data
-theta_1 <- dnn_1$model(x)
+theta_1 <- dnn_1$model(x) # calculate parameters for full data
 theta_2 <- dnn_2$model(x)
 theta_3 <- dnn_3$model(x)
 
