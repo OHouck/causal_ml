@@ -7,104 +7,71 @@
 
 # CM: add file headings
 
-rm(list = ls()) # clear workspace
+rm(list = ls())
 
-library(torch) # load required packages
+library(torch) # required libraries
+library(MASS)
 library(ggplot2)
-library(MASS) # for ginv
 
-path <- "~/projects/second-year/causal_ml/final_simulation/" # working directory
-
-set.seed(123) # set seed
-torch_manual_seed(123)
+path <- "~/projects/causal_ml/connor"
 
 #------------------------------------------------------------------------------#
-# 1. Generate data
+# 1. Data generating process
 #------------------------------------------------------------------------------#
+loss_func <- function(y_pred, y, reduction) {
+  # nnf_mse_loss(y_pred, y, reduction = reduction) %>% return()
+  # Use binary cross entropy loss for the binary classification final problem
+  nnf_binary_cross_entropy(y_pred, y, reduction = reduction) %>% return()
+}
+
+y_pred_func <- function(alpha, beta, z) { # generates prediction for y
+  y_prob <- torch_reciprocal(
+    torch_add(1, torch_mul(
+      torch_exp(torch_neg(alpha)),
+      torch_pow(z, torch_neg(beta))
+    ))
+  ) %>% return()
+}
+
 d_in <- 5 # input dimensionality: dim(x)
 dim_z <- 1L # treatment dimensionality: dim(Z)
 d_out <- 2 # output dimensionality: dim(theta)
 
-N <- 30000  # number of observations in training set
-# CM: increase this after testing
+N <- 60000  # number of observations in training set
 
-x <- torch_tensor(matrix(rnorm(N * d_in), N, d_in)) # create random data
+set.seed(12345)
+torch_manual_seed(12345)
 
-# Generate alpha(x) = <placeholder>
-true_alpha <- x[, 1, NULL] + x[, 2, NULL]
+x <- torch_tensor(matrix(rnorm(N * d_in), N, d_in)) # draw X from normal dist
+true_alpha <- -0.5 - x[, 1, NULL] + torch_sigmoid(x[, 2, NULL])
+true_beta <- 3 - 0.2 * x[, 3, NULL] + torch_pow(x[, 4, NULL], 2)
 
-# Generate beta(x) = <placeholder>
-true_beta <- x[, 3, NULL] + x[, 4, NULL]
+z <- torch_pow(torch_exp(0.8 * torch_randn(N, 1L)), 0.5) + 0.1 # treatment
 
-# Assign treatment t(X) = <placeholder>
-# t needs to be strictly positive and continuous
-# z <- 1 + 0.6 * torch_rand(N, 1L)
-# z <- 0.2 + 0.6 * torch_rand(N, 1L)
-# z <- torch_pow(torch_randn(N, 1L) + x[, 5, NULL], 2) + 0.5
-z <- torch_exp(torch_randn(N, 1L))
+true_prob <- y_pred_func(true_alpha, true_beta, z) # calculate probability
 
-# z <- torch_pow(torch_randn(N, 1L), 2) + 1
-
-# z <- x[, 3, NULL] # t in the code is already transformed into log(t)
-
-calc_prob <- function(alpha, beta, z) {
-  torch_reciprocal(
-    1 + torch_exp(torch_mul(-1, alpha) - torch_mul(beta, torch_log(z)))
-  ) %>% return()
-}
-
-true_prob <- calc_prob(true_alpha, true_beta, z)
-
-plt <- ggplot() +
+plt <- ggplot() + # density of P{Y = 1}
   geom_histogram(aes(x = true_prob %>% as.numeric()),
                  color = "deepskyblue3", fill = "deepskyblue") +
-  labs(x = "true_prob", y = "Density", title = "Density of true_prob") +
+  labs(x = "true_prob", y = "Count", title = "Distribution of Pr{Y = 1}") +
   theme_bw()
 ggsave(file.path(path, "out", "density_true_prob.png"), plt)
 
-y <- rbinom(N, 1, prob = as.numeric(true_prob))
+y <- rbinom(N, 1, prob = as.numeric(true_prob)) # draw from Bernoulli
 y <- torch_tensor( # recast as torch tensor
   as.matrix(y),
   dtype = torch_float()
 )
 
-table(as.numeric(y))
-
-calc_loss <- function(y_pred, y, reduction) {
-  # nnf_mse_loss(y_pred, y, reduction = reduction) %>% return()
-  # y_pred <- torch_where(y_pred == 0, torch_tensor(0.01), y_pred)
-  # y_pred <- torch_where(y_pred == 1, torch_tensor(0.99), y_pred)
-
-  loss <- -y * torch_log(y_pred + 0.0001) - (1 - y) *
-    torch_log(1 + 0.0001 - y_pred)
-  if (reduction == "mean") {
-    loss <- loss * (1 / (y %>% length()))
-  }
-  torch_sum(loss) %>% return()
-}
-
-# CM: simple model for testing
-# calc_prob <- function(alpha, beta, z) {
-#   alpha + torch_mul(beta, z) %>% return()
-# }
-# true_prob <- calc_prob(true_alpha, true_beta, z) + torch_randn(N, 1)
-# true_prob <- calc_prob(true_alpha, true_beta, z)
-# y <- torch_tensor( # recast as torch tensor
-#   as.matrix(true_prob),
-#   dtype = torch_float()
-# )
-
-# calc_loss <- function(y_pred, y, reduction) {
-#   nnf_mse_loss(y_pred, y, reduction = reduction) %>% return()
-# }
+table(as.numeric(y)) # tabulate binary outcome y
 
 #------------------------------------------------------------------------------#
 # 2. Create sample splits
 #------------------------------------------------------------------------------#
-data <- list() # full dataset
-data$x <- x
-data$y <- y
-data$z <- z
+# data <- list() # full dataset (don't think we need this for present purpose)
+# data$x <- x
+# data$y <- y
+# data$z <- z
 
 idxc <- idx <- list() # Sample IDs for 3 splits
 idx[[1]] <- sample(1:N, size = N / 3, replace = FALSE) # first split
@@ -142,30 +109,31 @@ source(file.path(path, "est_Lambda.R")) # step 2
 source(file.path(path, "influence_function.R")) # step 3
 
 #------------------------------------------------------------------------------#
-# 4.1. Implement causal DNN - thetaDNN
+# 4. Implement causal DNN - thetaDNN
 #------------------------------------------------------------------------------#
 # Crossfits (CM: check crossfit sequences in all sections below):
 # 1, 2, 3
 # 3, 1, 2
 # 2, 3, 1
 
-# CM: switch Adam optimization parameters here
-# CM: consider changing architecture
-# CM: check loss function
-# CM: try some regularization
+# Future improvements:
+# Switch Adam optimization parameters in function arguments
+# Experiment more with different architectures
+# Add in regularization
+
 # Estimate theta with DNN
-dnn_1 <- theta_DNN(
-  split = split_1, y_pred_func = calc_prob, loss_func = calc_loss,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
-dnn_2 <- theta_DNN(
-  split = split_2, y_pred_func = calc_prob, loss_func = calc_loss,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
-dnn_3 <- theta_DNN(
-  split = split_3, y_pred_func = calc_prob, loss_func = calc_loss,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
+cat("Split 1:\n")
+dnn_1 <- theta_DNN(split = split_1, loss_func = loss_func,
+                   y_pred_func = y_pred_func, arch = c(30, 30, 30, 30, 30, 30),
+                   N_epoch = 1000)
+cat("Split 3:\n")
+dnn_3 <- theta_DNN(split = split_3, loss_func = loss_func,
+                   y_pred_func = y_pred_func, arch = c(30, 30, 30, 30, 30, 30),
+                   N_epoch = 1000)
+cat("Split 2:\n")
+dnn_2 <- theta_DNN(split = split_2, loss_func = loss_func,
+                   y_pred_func = y_pred_func, arch = c(30, 30, 30, 30, 30, 30),
+                   N_epoch = 1000)
 
 theta_1 <- dnn_1$model(x) # calculate parameters for full data
 theta_2 <- dnn_2$model(x)
@@ -247,7 +215,7 @@ plt <- ggplot() +
   theme_bw()
 
 ggsave(file.path(path, "out", "est_alpha_density.png"), plt)
-  
+
 plt <- ggplot() +
   geom_density(aes(x = b_e_1, color = "Split 1"), show.legend = FALSE) +
   stat_density(aes(x = b_e_1, color = "Split 1"),
@@ -267,100 +235,122 @@ plt <- ggplot() +
 ggsave(file.path(path, "out", "est_beta_density.png"), plt)
 
 #------------------------------------------------------------------------------#
-# 4.2. Implement causal DNN - est_Lambda
+# 5. Implement causal DNN - est_Lambda
 #------------------------------------------------------------------------------#
 # Project the Hessian onto X to get Lambda
 # CM: check the sequence here
-est_Lambda_1 <- est_Lambda(
-  split = split_1, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_3,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
-est_Lambda_2 <- est_Lambda(
-  split = split_2, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_1,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
-est_Lambda_3 <- est_Lambda(
-  split = split_3, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_2,
-  N_epoch = 2000, arch = c(20, 20, 20, 20)
-)
+cat("Split 2:\n")
+est_Lambda2 <- est_Lambda(split = split_2, loss_func = loss_func,
+                          y_pred_func = y_pred_func, dnn = dnn_1,
+                          arch = c(30, 30, 30, 30, 30, 30), N_epoch = 1000)
+cat("Split 1:\n")
+est_Lambda1 <- est_Lambda(split = split_1, loss_func = loss_func,
+                          y_pred_func = y_pred_func, dnn = dnn_3,
+                          arch = c(30, 30, 30, 30, 30, 30), N_epoch = 1000)
+cat("Split 3:\n")
+est_Lambda3 <- est_Lambda(split = split_3, loss_func = loss_func,
+                          y_pred_func = y_pred_func, dnn=dnn_2,
+                          arch = c(30, 30, 30, 30, 30, 30), N_epoch = 1000)
 
 #------------------------------------------------------------------------------#
-# 4.3. Implement causal DNN - influence_function
+# 6. Implement causal DNN - influence_function
 #------------------------------------------------------------------------------#
-# Simple H: H(x) = beta(x)
-H <- function(split, theta) theta[, 2]
+# 6.1. G(x) = beta(x)
+G <- function(split, theta) theta[, 2]
 
-H_influence_function_1 <- influence_function(
-  split = split_1, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_2,
-  est_Lambda = est_Lambda_3, H
+G_if_list_3 <- influence_function(split = split_3, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_1,
+                                  est_Lambda = est_Lambda2, H = G)
+G_if_list_2 <- influence_function(split = split_2, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_3,
+                                  est_Lambda = est_Lambda1, H = G)
+G_if_list_1 <- influence_function(split = split_1, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_2,
+                                  est_Lambda = est_Lambda3, H = G)
+
+G_if_1 <- G_if_list_1$inf_i # stack
+G_if_2 <- G_if_list_2$inf_i
+G_if_3 <- G_if_list_3$inf_i
+
+G_hat_est <- mean(c(G_if_1, G_if_2, G_if_3))
+G_hat_se <- sqrt((1 / 3) * (var(G_if_1) + var(G_if_2) + var(G_if_3)) / N)
+
+cat(
+  round(mean(true_beta %>% as.numeric()), 4),
+  round(G_hat_est, 4),
+  round(G_hat_se, 4),
+  round(G_hat_est - 1.96 * G_hat_se, 4),
+  round(G_hat_est + 1.96 * G_hat_se, 4),
+  sep = ","
 )
-H_influence_function_2 <- influence_function(
-  split = split_2, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_3,
-  est_Lambda = est_Lambda_1, H
+
+# 6.1. H(x) = diff / diff t P {Y == 1}
+H <- function(split, theta) {
+  z <- split$z
+  N <- nrow(z)
+
+  alpha <- theta[,1]$reshape(c(N,1L))
+  beta <- theta[,2:(d_out)]$reshape(c(N,d_out-1))
+  
+  torch_div(
+    torch_mul(
+      torch_mul(torch_neg(beta), torch_pow(z, torch_neg(torch_add(beta, 1)))),
+      torch_exp(torch_neg(alpha))
+    ),
+    torch_pow(
+      torch_add(
+        torch_mul(
+          torch_pow(z, torch_neg(beta)),
+          torch_exp(torch_neg(alpha))
+        ),
+        1
+      ),
+      2
+    )
+  ) %>% return()
+}
+
+true_E_H <- torch_div(
+  torch_mul(
+    torch_mul(
+      torch_neg(true_beta), torch_pow(z, torch_neg(torch_add(true_beta, 1)))
+    ),
+    torch_exp(torch_neg(true_alpha))
+  ),
+  torch_pow(
+    torch_add(
+      torch_mul(
+        torch_pow(z, torch_neg(true_beta)),
+        torch_exp(torch_neg(true_alpha))
+      ),
+      1
+    ),
+    2
+  )
 )
-H_influence_function_3 <- influence_function(
-  split = split_3, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_1,
-  est_Lambda = est_Lambda_2, H
+
+H_if_list_3 <- influence_function(split = split_3, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_1,
+                                  est_Lambda = est_Lambda2, H = H)
+H_if_list_2 <- influence_function(split = split_2, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_3,
+                                  est_Lambda = est_Lambda1, H = H)
+H_if_list_1 <- influence_function(split = split_1, loss_func = loss_func,
+                                  y_pred_func = y_pred_func, dnn = dnn_2,
+                                  est_Lambda = est_Lambda3, H = H)
+
+H_if_1 <- H_if_list_1$inf_i # stack
+H_if_2 <- H_if_list_2$inf_i
+H_if_3 <- H_if_list_3$inf_i
+
+H_hat_est <- mean(c(H_if_1, H_if_2, H_if_3))
+H_hat_se <- sqrt((1 / 3) * (var(H_if_1) + var(H_if_2) + var(H_if_3)) / N)
+
+cat(
+  round(mean(true_E_H %>% as.numeric()), 4),
+  round(H_hat_est, 4),
+  round(H_hat_se, 4),
+  round(H_hat_est - 1.96 * H_hat_se, 4),
+  round(H_hat_est + 1.96 * H_hat_se, 4),
+  sep = ","
 )
-
-# Marginal effect
-# G <- function(split, theta) {
-#   theta[, 2] * torch_pow(split$z, -1) *
-#     torch_exp(torch_mul(-1, theta[, 1]) - torch_mul(theta[, 2], torch_log(split$z))) *
-#     torch_reciprocal(torch_pow(
-#       1 + torch_exp(torch_mul(-1, theta[, 1]) - torch_mul(theta[, 2], torch_log(split$z))),
-#       2
-#     ))
-# }
-
-# CM: linear DNN learning rate adjustment
-# CM: check the sequence here
-# G_influence_function_1 <- influence_function(
-#   split = split_1, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_2,
-#   est_Lambda = est_Lambda_3, G
-# )
-# G_influence_function_2 <- influence_function(
-#   split = split_2, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_3,
-#   est_Lambda = est_Lambda_1, G
-# )
-# G_influence_function_3 <- influence_function(
-#   split = split_3, y_pred_func = calc_prob, loss_func = calc_loss, dnn = dnn_1,
-#   est_Lambda = est_Lambda_2, G
-# )
-
-#------------------------------------------------------------------------------#
-# 5. Summarize results
-#------------------------------------------------------------------------------#
-H_ifi_1 <- H_influence_function_1$inf_i
-H_ifi_2 <- H_influence_function_2$inf_i
-H_ifi_3 <- H_influence_function_3$inf_i
-
-EH_est <- mean(c(H_ifi_1, H_ifi_2, H_ifi_3))
-EH_se <- sqrt((1 / 3) * (var(H_ifi_1) + var(H_ifi_2) + var(H_ifi_3)) / N)
-
-EH_est
-EH_se
-
-EH_ci_lower <- EH_est - 1.96 * EH_se
-EH_ci_upper <- EH_est + 1.96 * EH_se
-
-EH_ci_lower
-EH_ci_upper
-
-mean(true_beta) # truth
-
-# G_ifi_1 <- G_influence_function_1$inf_i
-# G_ifi_2 <- G_influence_function_2$inf_i
-# G_ifi_3 <- G_influence_function_3$inf_i
-
-# EG_est <- mean(c(G_ifi_1, G_ifi_2, G_ifi_3))
-# EG_se <- sqrt((1 / 3) * (var(G_ifi_1) + var(G_ifi_2) + var(G_ifi_3)) / N)
-
-# EG_est
-# EG_se
-
-# EG_ci_lower <- EG_est - 1.96 * EG_se
-# EG_ci_upper <- EG_est + 1.96 * EG_se
-
-# EG_ci_lower
-# EG_ci_upper
