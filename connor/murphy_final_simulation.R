@@ -46,7 +46,8 @@ x <- torch_tensor(matrix(rnorm(N * d_in), N, d_in)) # draw X from normal dist
 true_alpha <- -0.5 - x[, 1, NULL] + torch_sigmoid(x[, 2, NULL])
 true_beta <- 3 - 0.2 * x[, 3, NULL] + torch_pow(x[, 4, NULL], 2)
 
-z <- torch_pow(torch_exp(0.8 * torch_randn(N, 1L)), 0.5) + 0.1 # treatment
+# z <- torch_pow(torch_exp(0.8 * torch_randn(N, 1L)), 0.5) + 0.1 # treatment
+z <- torch_exp(0.4 * torch_randn(N, 1L)) + 0.1 # treatment
 
 true_prob <- y_pred_func(true_alpha, true_beta, z) # calculate probability
 
@@ -276,11 +277,13 @@ G_hat_est <- mean(c(G_if_1, G_if_2, G_if_3))
 G_hat_se <- sqrt((1 / 3) * (var(G_if_1) + var(G_if_2) + var(G_if_3)) / N)
 
 cat(
+  "$beta(bold(X)_i)$",
   round(mean(true_beta %>% as.numeric()), 4),
   round(G_hat_est, 4),
   round(G_hat_se, 4),
   round(G_hat_est - 1.96 * G_hat_se, 4),
   round(G_hat_est + 1.96 * G_hat_se, 4),
+  ",",
   sep = ","
 )
 
@@ -291,7 +294,7 @@ H <- function(split, theta) {
 
   alpha <- theta[,1]$reshape(c(N,1L))
   beta <- theta[,2:(d_out)]$reshape(c(N,d_out-1))
-  
+
   torch_div(
     torch_mul(
       torch_mul(torch_neg(beta), torch_pow(z, torch_neg(torch_add(beta, 1)))),
@@ -347,10 +350,12 @@ H_hat_est <- mean(c(H_if_1, H_if_2, H_if_3))
 H_hat_se <- sqrt((1 / 3) * (var(H_if_1) + var(H_if_2) + var(H_if_3)) / N)
 
 cat(
+  "$(diff PP{Y_i = 1}) / (diff t)$",
   round(mean(true_E_H %>% as.numeric()), 4),
   round(H_hat_est, 4),
   round(H_hat_se, 4),
   round(H_hat_est - 1.96 * H_hat_se, 4),
   round(H_hat_est + 1.96 * H_hat_se, 4),
+  "",
   sep = ","
 )
