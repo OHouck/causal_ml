@@ -1,5 +1,5 @@
 influence_function <- function(
-  split, y_pred_func, loss_func, dnn, est_Lambda, H
+  split, loss_func, y_pred_func, dnn, est_Lambda, H
 ) {
   model <- dnn$model
 
@@ -9,7 +9,7 @@ influence_function <- function(
 
   d_in <- ncol(x) # dim(x)
   d_z <- ncol(z) # dim(z)
-  d_out <- 2  # dim(theta)
+  d_out <- 2  # set to dim(theta); manual for now
 
   N <- nrow(x) # number of observations in split
 
@@ -21,19 +21,15 @@ influence_function <- function(
   alpha$retain_grad()
   beta$retain_grad()
 
-  # Prediction and Loss
-  # y_pred <- alpha + torch_sum(beta * z, dim = 2, keepdim = TRUE)
-  y_pred <- y_pred_func(alpha, beta, z) # Prediction and loss
-  # loss <- 0.5 * loss_func(y_pred, y, reduction = "sum")
+  y_pred <- y_pred_func(alpha, beta, z) # prediction and Loss
   loss <- loss_func(y_pred, y, reduction = "sum")
-  # loss <- 0.5 * nnf_mse_loss(y_pred, y, reduction = "sum")
 
   theta_grad <- autograd_grad( # compute gradient
     loss, theta, create_graph = TRUE, retain_graph = TRUE
   )
   theta_grad2 <- as.matrix(theta_grad[[1]]) # useful to store as a matrix
 
-  hess_vec <- NULL # store the Hessian as a flat vector
+  hess_vec <- NULL # reshape the Hessian
   for(k in 1:length(est_Lambda)){
     hess_vec <- cbind(hess_vec, as.matrix(est_Lambda[[k]]$model(x)))
   }
@@ -54,6 +50,7 @@ influence_function <- function(
     sapply( # correction
       1:m, function(j) H_theta2[j, ] %*% Lambda_inv[[j]] %*% t(theta_grad2)[, j]
     )
+
   # return(list(auto.if=auto.if,plugin=as.numeric(Hi)))
   list(inf_i = inf_i)
 }
