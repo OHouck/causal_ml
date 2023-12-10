@@ -35,7 +35,7 @@ d_z <- 1L
 d_out  <- 2 
 
 # number of observations in training set
-N <- 50000 
+N <- 25000 
 
 # create random data
 x  <- torch_tensor(matrix(rnorm(N*d_in), N, d_in))
@@ -44,7 +44,10 @@ x  <- torch_tensor(matrix(rnorm(N*d_in), N, d_in))
 true_a <- -1 + x[, 1, NULL] - 0.5 * torch_pow(x[, 2, NULL], 2)
 
 # Generate beta(x) also arbitrarily
-true_b<- 2 + x[, 3, NULL] + 2 * x[, 4, NULL]
+true_b <- 2 + x[, 3, NULL] + 2 * x[, 4, NULL]
+
+# true_a <- -0.5 - x[, 1, NULL] + torch_sigmoid(x[, 2, NULL])
+# true_a <- 3 - 0.2 * x[, 3, NULL] + torch_pow(x[, 4, NULL], 2)
 
 # Assign treatment t(X) = <placeholder>
 # t needs to be strictly positive and continuous
@@ -168,13 +171,16 @@ source(paste0(code, "houck_final/procRes_houck.R")) # Step 3
 
 # Run DeepNets
 dnn1  <- cdnn(split_1, y_pred_func = y_prob, loss_func = loss_func,
-              learn_rate = 0.01, weight_decay = 1e-3, arch = c(30, 30))
+              learn_rate = 0.01, weight_decay = 1e-3, 
+              arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 
 dnn2  <- cdnn(split_2, y_pred_func = y_prob, loss_func = loss_func,
-              learn_rate = 0.01, weight_decay = 1e-3, arch = c(30, 30))
+              learn_rate = 0.01, weight_decay = 1e-3,
+              arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 
 dnn3  <- cdnn(split_3, y_pred_func = y_prob, loss_func = loss_func,
-              learn_rate = 0.01, weight_decay = 1e-3, arch = c(30, 30))
+              learn_rate = 0.01, weight_decay = 1e-3,
+              arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 
 # Get parameters on full data
 aba  <- dnn1$model(x)
@@ -191,11 +197,14 @@ abc  <- dnn3$model(x)
 # make minor changes to projLam.R to take in differnet 
 # loss functions and prediction functions
 lProj1 = makeLam(dat = split_2,dnn=dnn3, 
-    loss_func = loss_func, y_pred_func = y_prob)
+    loss_func = loss_func, y_pred_func = y_prob,
+    arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 lProj2 = makeLam(dat = split_2,dnn=dnn1, 
-    loss_func = loss_func, y_pred_func = y_prob)
+    loss_func = loss_func, y_pred_func = y_prob,
+    arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 lProj3 = makeLam(dat = split_2,dnn=dnn2, 
-    loss_func = loss_func, y_pred_func = y_prob)
+    loss_func = loss_func, y_pred_func = y_prob,
+    arch = c(20, 20, 20, 20, 20, 20, 20, 20, 20, 20))
 
 # Compute IF for each split and stack
 # What statistic are we interested in
