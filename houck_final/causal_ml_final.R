@@ -1,7 +1,7 @@
 # Author: Ozzy Houck
 # Date: 12/7/2023
 
-# Purpose: This is the code submitted as a part of the causal machine learning 
+# Purpose: This is the code submitted as a part of the causal machin learning 
 # final project. It's purpose is to create a 95% confidence interval for the 
 # marginal treatment effect of a treatment variable in a logistic model
 
